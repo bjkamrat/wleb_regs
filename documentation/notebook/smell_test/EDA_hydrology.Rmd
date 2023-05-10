@@ -1,0 +1,100 @@
+---
+title: "Exploratory Data Analysis"
+author: "Brock Kamrath"
+date: '2023-05-09'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exploratory Data Analysis
+
+## Project Introduction
+
+The objective of our research project is to quantify the influence of the Ohio's 2015 Nutrient Management rules for the Western Lake Erie Basin (WLEB). Our specific research questions were:
+
+1.  Big Picture: have annual and spring tributary nutrient trends changed in response to the 2015 nutrient management rules?
+
+2.  Rule focused: a) have winter months seen reduced nutrient export?; b) have wet or dry period seen different nutrient export trends
+
+3.  Is there a relationship between nutrient inputs in the watershed and nutrient delivery?
+
+Answer our research questions, we need to calculate and evaluate long-term tributary trends. Rowland et al. (2021) evaluated the best method to deduce nutrient trends and found flow-normalized concentrations and loads to be the best. The weighted regression on time, discharge, and season (WRTDS) model will be used to estimate annual river loads (kg yr-1), concentrations (mg L-1), and the change in river concentrations and loads (Hirsh, 2010). We used flow normalized (FN) loads and concentrations as well as the "actual" loads estimated by WRTDS and the WRTDS Kalman filtering extension. A bootstrap method was used to obtained a likelihood statistics for the estimated FN load and concentrations trends (Hirsch et al., 2015).
+
+To conduct our analysis, we needed a study site within the WLEB with long term data collection for SRP, NO3, TP, and TSS ranging up to at least WY2020 to reduce the influence of legacy nutrient export. Legacy nutrients can be a problem because they disguise improvements provided by current practices. Stackpoole et al. (2021) found that the legacy phosphorus inputs from 4 years prior significantly influenced current TP river loads, while legacy nitrogen inputs from 2, 4, 9, and 11 years significantly influenced current TN river loads in the Mississippi River Basin. The smaller watersheds of the WLEB are likely to flush legacy nutrients slightly quickly than the large Mississippi River Basin, but the requirement for data up to WY2021 provided at least 6 years of rules implementation, which should provide enough time for the influence of legacy nutrient to be substantially reduced. Additionally, the site needed to be predominately agricultural and small enough for trends nutrient dynamics to change in the span of 5 to 10 years.
+
+The Honey Creek site (USGS: 04197100) met our needs. The Honey Creek watershed is 386 km2 and 81% agricultural. Furthermore, the Honey Creek watershed is a subbasin of the HUC8 Sandusky River Watershed (ID: 04100011) and includes portions of Crawford, Huron, and Seneca counties.At the USGS monitoring site in Melmore, OH, water quality and hydrology data have been collected continuously from 1977 to the present date. However, for this project, approved WQ data were only available through WY2021.
+
+## Data Requirements for WRTDS
+
+The WRTDS model requires over 200 WQ samples, at least 20 years of sampling data, continuous daily discharge measurements for the period of interest, and limited flashiness in the hydrology of the tributary. We obtained subdaily concentration data for NO3, SRP, TP, and SS. On average, there were ~500 samples collected per year. We ran our analysis for 1 pollutant at a time. We started with SRP.
+
+```{r }
+# read in library
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(here)
+library(knitr)
+library(rio)
+
+source(here("code","functions","01_data_processing.R"))
+
+# read in concentration data
+raw_df_conc <- read_excel(here("data","raw","2023_05_03_Raw-Honey-Conc.xlsx"))
+
+# count the number of samples per year for each pollutant
+count_samp <- raw_df_conc %>%
+    select(DateTime,tss,tp,srp,no3) %>%
+  mutate(Date = as.Date(DateTime),
+         wy = water_year(Date)) %>%
+  filter(wy >= 1981 & wy <= 2021) %>%
+  select(!DateTime) %>%
+  gather(key = "pol", value = "conc", -Date,-wy) %>%
+  group_by(wy, pol) %>%
+    summarise(n = sum(!is.na(conc)))
+
+#calculate the average annual samples
+count_samp %>%
+  group_by(pol) %>%
+  summarise(mean = mean(n))
+
+
+#### Prep Concentration
+# select SRP values and clip water years to 1992 to 2021
+pollutants <- c("srp","no3","tp","tss")
+output <- list()
+
+for(i in 1:length(pollutants)){
+  df <- raw_df_conc %>%
+  select(DateTime, q_cfs, !!pollutants[i]) %>%
+  mutate(Date = as.Date(DateTime),
+         wy = water_year(Date)) %>%
+  filter(wy >= 1981 & wy <= 2021) %>%
+  rename("conc_mgL" = pollutants[i])
+  
+  # convert to daily flow-weighted average concentration
+output[[i]] <- calc_daily_fwmc(df)
+
+#write to csv the daily flow-weighted avearges
+write.csv(output[[i]], here("data","processed",paste("Honey_",pollutants[i],".csv",sep ="")), row.names = FALSE)
+}
+
+
+```
+
+I need to remove qualifer values
+Oddly, the site may be too intensively sampled
+
+(Choquette et al., 2019)
+
+```{}
+```
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

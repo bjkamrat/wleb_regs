@@ -1,0 +1,106 @@
+---
+title: "Raw data overview"
+author: "Brock Kamrath"
+date: "2023-05-02"
+output: html_notebook
+---
+
+# Purpose
+I want to know how many days have data for Honey Creek, both when an average is simply caculated and when a flow-weighted average is calculated.
+
+# Method
+First, I imported the raw concentration data from NCWQR
+
+```{r, echo=FALSE, warning = FALSE}
+# Initial data preparation to collect srp data
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(here)
+library(knitr)
+library(rio)
+
+source(here("code","functions","01_data_processing.R"))
+
+df <- read_excel(here("data","raw","2023_05_03_Raw-Honey-Conc.xlsx"))
+
+# select SRP values and clip water years to 1992 to 2021
+df_srp <- df %>%
+  select(DateTime, q_cfs,srp) %>%
+  mutate(Date = as.Date(DateTime),
+         wy = water_year(Date)) %>%
+  filter(wy >= 2001 & wy <= 2021)
+
+# summarise df_srp
+summary(df_srp)
+```
+
+Next, I summarised the srp values.
+
+
+```{r}
+#plot all values by water year
+df_srp %>%
+  group_by(wy,Date) %>%
+  summarise(mean = mean(srp,na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(day = yday(Date),
+         interval = as.numeric(cut(wy,4))) %>%
+  ggplot()+
+  geom_line(aes(x = day, y = mean, color = as.factor(wy))) +
+  facet_wrap(~as.factor(interval))
+
+```
+
+```{r}
+# Clip srp values to only extreme events
+ee_srp <- df_srp %>%
+  mutate(month = month(Date)) %>%
+  mutate(interval = as.numeric(cut(wy,4))) %>%
+         filter(srp >= 0.2)
+
+
+ee_srp %>%
+    mutate(wy = as.factor(wy),
+           month = as.factor(month)) %>%
+    group_by(interval, wy, month) %>%
+    summarise(n = sum(!is.na(srp))) %>%
+  ggplot(aes(x = month, y = n, fill = as.factor(interval)))+
+  geom_bar(stat = "identity",position = "dodge")
+  
+
+```
+
+Inteestingly, May is now a month with greater DRP concentrations
+
+
+```{r}
+# calculate geometric mean for each month and look at changes
+sum_stat <- df_srp %>%
+  filter(wy >= 2000 & wy <= 2021 & srp >= 0.001) %>%
+    mutate(month = month(Date),
+          interval = as.numeric(cut(wy,6))) %>%
+    drop_na(srp) %>%
+    group_by(interval,wy,month) %>%
+      summarise(gmean = geomMean(srp))
+
+
+sum_stat %>%
+  ggplot(aes(x=wy, y = gmean))+
+  geom_point()+
+  geom_smooth()+
+  facet_wrap(~month)
+
+
+# filter the data for SRP and count values per year
+count_wy <- df_srp %>%
+  filter( wy >=2000 & wy <= 2021) %>%
+  mutate(Water_Year = as.factor(wy)) %>%
+  group_by(Water_Year) %>%
+    summarise(n = sum(!is.na(srp)))
+
+
+kable(count_wy)
+
+```
+

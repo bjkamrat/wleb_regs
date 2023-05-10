@@ -1,0 +1,84 @@
+---
+title: "First day of EDA"
+author: "Brock Kamrath"
+date: "2023-05-02"
+output: html_notebook
+---
+# Purpose
+I need to better understand the data provided to me by NCWQR. Here, I am mainly interested in SRP data. There are several objectives here. First, I need to determine how many days have data in each water year. 
+
+# Method 
+Data visualization was conducted using ggplot2
+
+
+# Results
+## Initial data visualization
+The SRP data showed an increase in daily loads in the past 5 years.
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(here)
+library(knitr)
+
+source(here("code","functions","01_data_processing.R"))
+
+df <- get_data(here("data","raw","2023_05_02_Raw-Honey-Wide.csv"))
+df_long <- raw_long(df)
+
+
+# filter the data for SRP and count values per year
+count_wy <- df_long %>%
+  mutate(wy = water_year(Date)) %>%
+  filter(pol == "SRP" & wy >=2000 & wy <= 2021) %>%
+  mutate(Water_Year = as.factor(wy)) %>%
+  group_by(Water_Year) %>%
+    summarise(n = sum(!is.na(flux_kgyr)))
+
+
+kable(count_wy)
+
+# then summarise the load estimates
+
+df_long %>%
+  mutate(wy = water_year(Date)) %>%
+filter(pol == "SRP" & wy >=2000 & wy <= 2021)%>%
+ggplot(aes(x = as.factor(wy), y = log(flux_kgyr))) + 
+  geom_boxplot()+
+  stat_summary(fun=mean, geom="line", aes(group=1))  + 
+stat_summary(fun=mean, geom="point")+
+  theme_bw()
+
+```
+
+
+```{r}
+# calculate geometric mean for each month and look at changes
+sum_stat <- df_long %>%
+  filter(pol == "SRP") %>%
+    mutate(wy = water_year(Date)) %>%
+      filter(wy >= 2000 & wy <= 2021) %>%
+      mutate(month = month(Date),
+             interval = as.numeric(cut(wy,4))) %>%
+        group_by(interval,wy,month) %>%
+          summarise(gmean = geomMean(flux_kgyr))
+
+
+sum_stat %>%
+  ggplot(aes(x=wy, y = gmean))+
+  geom_point(aes(color = interval))+
+  geom_smooth(se = FALSE)+
+  facet_wrap(~month, scales = "free")
+
+
+#summaries all values within interval
+df_long %>%
+  filter(pol == "SRP") %>%
+    mutate(wy = water_year(Date)) %>%
+      filter(wy >= 2000 & wy <= 2021) %>%
+      mutate(month = month(Date),
+             interval = as.numeric(cut(wy,4))) %>%
+  ggplot() +
+  geom_boxplot(aes(x = as.factor(interval), y = log(flux_kgyr)))+
+  facet_wrap(~month)
+  
+```
